@@ -3,7 +3,7 @@ aws
 # azure
 
 [aws]
-44.201.94.170
+54.198.167.119
 
 [aws:vars]
 ansible_ssh_user=ubuntu
