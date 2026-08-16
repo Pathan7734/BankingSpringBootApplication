@@ -51,6 +51,7 @@ stage('Ansible Playbook Execution'){
             -e httpPort=$httpPort \
             -e containerName=$containerName \
             -e dockerImageTag=$dockerHubUser/$containerName:$tag \
+            -e key_pair_path=/var/lib/jenkins/server.pem \
             -e ansible_user=$vmUser \
             -e ansible_password=$vmPassword \
             --become
