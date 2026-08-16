@@ -43,5 +43,17 @@ node{
 			sh "export ANSIBLE_HOST_KEY_CHECKING=False && ansible-playbook -i inventory.yaml containerDeploy.yaml -e httpPort=$httpPort -e containerName=$containerName -e dockerImageTag=$dockerHubUser/$containerName:$tag -e key_pair_path=/var/lib/jenkins/server.pem --become" 
 	}
 }
-
-
+stage('Ansible Playbook Execution'){
+    withCredentials([usernamePassword(credentialsId: 'azureVMAccount', usernameVariable: 'vmUser', passwordVariable: 'vmPassword')]) {
+        sh """
+            export ANSIBLE_HOST_KEY_CHECKING=False
+            ansible-playbook -i inventory.yaml containerDeploy.yaml \
+            -e httpPort=$httpPort \
+            -e containerName=$containerName \
+            -e dockerImageTag=$dockerHubUser/$containerName:$tag \
+            -e ansible_user=$vmUser \
+            -e ansible_password=$vmPassword \
+            --become
+        """
+    }
+}
