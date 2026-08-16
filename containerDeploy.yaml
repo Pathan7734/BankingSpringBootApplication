@@ -4,7 +4,7 @@
     - name: Apt Update
       apt:
         update_cache: yes
-      ignore_errors: yes   # prevents failure if a bad repo exists
+      ignore_errors: yes   # prevents failure if a bad repo exists on Azure
 
     - name: Install Docker
       apt:
@@ -30,3 +30,7 @@
 
     - name: Get running containers
       command: "docker ps"
+
+    - name: Prune unused Docker images
+      command: "docker image prune -f"
+      ignore_errors: yes
