@@ -1,36 +1,56 @@
-- name: Deploy Pods on Docker Container
-  hosts: all
-  tasks:
-    - name: Apt Update
-      apt:
-        update_cache: yes
-      ignore_errors: yes   # prevents failure if a bad repo exists on Azure
+node {
+    def tag, dockerHubUser, containerName, httpPort = ""
 
-    - name: Install Docker
-      apt:
-        name: docker.io
-        state: latest
-        update_cache: yes
+    stage('Prepare Environment'){
+        echo 'Initialize Environment'
+        tag="3.0"
+        containerName="bankingapp"
+        httpPort="8989"
+        withCredentials([usernamePassword(credentialsId: 'dockerHubAccount', usernameVariable: 'dockerUser', passwordVariable: 'dockerPassword')]) {
+            dockerHubUser="$dockerUser"
+        }
+    }
 
-    - name: Stop existing container if running
-      command: "docker stop {{ containerName }}"
-      ignore_errors: yes
+    stage('Code Checkout'){
+        try {
+            checkout scm
+        } catch(Exception e) {
+            echo 'Exception occurred in Git Code Checkout Stage'
+            currentBuild.result = "FAILURE"
+        }
+    }
 
-    - name: Remove existing container if present
-      command: "docker rm -f {{ containerName }}"
-      ignore_errors: yes
+    stage('Maven Build'){
+        sh "mvn clean package -DskipTests"
+    }
 
-    - name: Deploy new container {{ dockerImageTag }}
-      command: >
-        docker run -d
-        --name {{ containerName }}
-        --restart unless-stopped
-        -p {{ httpPort }}:{{ httpPort }}
-        docker.io/{{ dockerImageTag }}
+    stage('Docker Image Build'){
+        echo 'Creating Docker image'
+        sh "docker build -t $dockerHubUser/$containerName:$tag --pull --no-cache ."
+    }
 
-    - name: Get running containers
-      command: "docker ps"
+    stage('Publishing Image to DockerHub'){
+        echo 'Pushing the docker image to DockerHub'
+        withCredentials([usernamePassword(credentialsId: 'dockerHubAccount', usernameVariable: 'dockerUser', passwordVariable: 'dockerPassword')]) {
+            sh "echo $dockerPassword | docker login -u $dockerUser --password-stdin"
+            sh "docker push $dockerUser/$containerName:$tag"
+            echo "Image push complete"
+        }
+    }
 
-    - name: Prune unused Docker images
-      command: "docker image prune -f"
-      ignore_errors: yes
+    stage('Ansible Playbook Execution'){
+        withCredentials([usernamePassword(credentialsId: 'azureVMAccount', usernameVariable: 'vmUser', passwordVariable: 'vmPassword')]) {
+            sh """
+                export ANSIBLE_HOST_KEY_CHECKING=False
+                ansible-playbook -i inventory.yaml containerDeploy.yaml \
+                -e httpPort=$httpPort \
+                -e containerName=$containerName \
+                -e dockerImageTag=$dockerHubUser/$containerName:$tag \
+                -e key_pair_path=/var/lib/jenkins/server.pem \
+                -e ansible_user=$vmUser \
+                -e ansible_password=$vmPassword \
+                --become
+            """
+        }
+    }
+}
