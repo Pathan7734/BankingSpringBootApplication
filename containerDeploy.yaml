@@ -4,11 +4,13 @@
     - name: Apt Update
       apt:
         update_cache: yes
+      ignore_errors: yes   # prevents failure if a bad repo exists
 
     - name: Install Docker
       apt:
         name: docker.io
         state: latest
+        update_cache: yes
 
     - name: Stop existing container if running
       command: "docker stop {{ containerName }}"
