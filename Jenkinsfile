@@ -1,60 +1,47 @@
-node{
-    
+node {
     def tag, dockerHubUser, containerName, httpPort = ""
-    
+
     stage('Prepare Environment'){
-        echo 'Initialize Environment'
         tag="3.0"
-	withCredentials([usernamePassword(credentialsId: 'dockerHubAccount', usernameVariable: 'dockerUser', passwordVariable: 'dockerPassword')]) {
-		dockerHubUser="$dockerUser"
-        }
-	containerName="bankingapp"
-	httpPort="8989"
-    }
-    
-    stage('Code Checkout'){
-        try{
-            checkout scm
-        }
-        catch(Exception e){
-            echo 'Exception occured in Git Code Checkout Stage'
-            currentBuild.result = "FAILURE"
-        }
-    }
-    
-    stage('Maven Build'){
-        sh "mvn clean package"        
-    }
-    
-    stage('Docker Image Build'){
-        echo 'Creating Docker image'
-        sh "docker build -t $dockerHubUser/$containerName:$tag --pull --no-cache ."
-    }  
-	
-    stage('Publishing Image to DockerHub'){
-        echo 'Pushing the docker image to DockerHub'
+        containerName="bankingapp"
+        httpPort="8989"
         withCredentials([usernamePassword(credentialsId: 'dockerHubAccount', usernameVariable: 'dockerUser', passwordVariable: 'dockerPassword')]) {
-		sh "docker login -u $dockerUser -p $dockerPassword"
-		sh "docker push $dockerUser/$containerName:$tag"
-		echo "Image push complete"
-        } 
-    }    
-	stage('Ansible Playbook Execution'){
-			sh "export ANSIBLE_HOST_KEY_CHECKING=False && ansible-playbook -i inventory.yaml containerDeploy.yaml -e httpPort=$httpPort -e containerName=$containerName -e dockerImageTag=$dockerHubUser/$containerName:$tag -e key_pair_path=/var/lib/jenkins/server.pem --become" 
-	}
-}
-stage('Ansible Playbook Execution'){
-    withCredentials([usernamePassword(credentialsId: 'azureVMAccount', usernameVariable: 'vmUser', passwordVariable: 'vmPassword')]) {
-        sh """
-            export ANSIBLE_HOST_KEY_CHECKING=False
-            ansible-playbook -i inventory.yaml containerDeploy.yaml \
-            -e httpPort=$httpPort \
-            -e containerName=$containerName \
-            -e dockerImageTag=$dockerHubUser/$containerName:$tag \
-            -e key_pair_path=/var/lib/jenkins/server.pem \
-            -e ansible_user=$vmUser \
-            -e ansible_password=$vmPassword \
-            --become
-        """
+            dockerHubUser="$dockerUser"
+        }
+    }
+
+    stage('Code Checkout'){
+        checkout scm
+    }
+
+    stage('Maven Build'){
+        sh "mvn clean package -DskipTests"
+    }
+
+    stage('Docker Image Build'){
+        sh "docker build -t $dockerHubUser/$containerName:$tag --pull --no-cache ."
+    }
+
+    stage('Publishing Image to DockerHub'){
+        withCredentials([usernamePassword(credentialsId: 'dockerHubAccount', usernameVariable: 'dockerUser', passwordVariable: 'dockerPassword')]) {
+            sh "echo $dockerPassword | docker login -u $dockerUser --password-stdin"
+            sh "docker push $dockerUser/$containerName:$tag"
+        }
+    }
+
+    stage('Ansible Playbook Execution'){
+        withCredentials([usernamePassword(credentialsId: 'azureVMAccount', usernameVariable: 'vmUser', passwordVariable: 'vmPassword')]) {
+            sh """
+                export ANSIBLE_HOST_KEY_CHECKING=False
+                ansible-playbook -i inventory.yaml containerDeploy.yaml \
+                -e httpPort=$httpPort \
+                -e containerName=$containerName \
+                -e dockerImageTag=$dockerHubUser/$containerName:$tag \
+                -e key_pair_path=/var/lib/jenkins/server.pem \
+                -e ansible_user=$vmUser \
+                -e ansible_password=$vmPassword \
+                --become
+            """
+        }
     }
 }
